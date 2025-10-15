@@ -84,9 +84,9 @@ class AttachmentProcessorGD extends AttachmentProcessor {
 		$gdinfo                    = gd_info();
 		$this->is_freetype_enabled = $gdinfo['FreeType Support'];
 
-                if ( ImageHelper::supports_webp() ) {
-                        $this->allowed_types[] = 'webp';
-                }
+		if ( ! empty( $gdinfo['WebP Support'] ) && function_exists( 'imagecreatefromwebp' ) && function_exists( 'imagewebp' ) ) {
+			$this->allowed_types[] = 'webp';
+		}
 
 		parent::__construct( $file, $params );
 

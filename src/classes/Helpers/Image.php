@@ -47,35 +47,12 @@ class Image {
 	 *
 	 * @return array
 	 */
-        public static function get_available_mime_types() {
-                $types = [
-                        'image/jpeg' => 'JPEG',
-                        'image/png'  => 'PNG',
-                        'image/gif'  => 'GIF',
-                ];
-
-                if ( self::supports_webp() ) {
-                        $types['image/webp'] = 'WebP';
-                }
-
-                return $types;
-        }
-
-        /**
-         * Determines if the current environment supports WebP handling via GD.
-         *
-         * @return bool
-         */
-        public static function supports_webp() {
-
-                if ( ! function_exists( 'gd_info' ) ) {
-                        return false;
-                }
-
-                $gdinfo = gd_info();
-
-                return ! empty( $gdinfo['WebP Support'] )
-                        && function_exists( 'imagecreatefromwebp' )
-                        && function_exists( 'imagewebp' );
-        }
+	public static function get_available_mime_types() {
+		return [
+			'image/jpeg' => 'JPEG',
+			'image/png'  => 'PNG',
+			'image/gif'  => 'GIF',
+			'image/webp' => 'WebP',
+		];
+	}
 }

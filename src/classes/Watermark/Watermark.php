@@ -46,12 +46,12 @@ class Watermark {
 				'unit'  => 'px',
 			],
 		],
-                'image_types'     => [
-                        'image/jpeg',
-                        'image/png',
-                        'image/gif',
-                        'image/webp',
-                ],
+		'image_types'     => [
+			'image/jpeg',
+			'image/png',
+			'image/gif',
+			'image/webp',
+		],
 		'image_sizes'     => [
 			'medium',
 			'medium_large',
