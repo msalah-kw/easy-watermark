@@ -48,6 +48,7 @@ class Watermark {
 			'image/jpeg',
 			'image/png',
 			'image/gif',
+			'image/webp',
 		],
 		'image_sizes'     => [
 			'medium',
