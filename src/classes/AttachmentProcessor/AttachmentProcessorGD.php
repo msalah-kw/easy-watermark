@@ -7,6 +7,7 @@
 
 namespace EasyWatermark\AttachmentProcessor;
 
+use EasyWatermark\Helpers\Image as ImageHelper;
 use EasyWatermark\Helpers\Text;
 use EasyWatermark\Watermark\Watermark;
 use EasyWatermark\Traits\WebpAware;
