@@ -52,6 +52,7 @@ class Image {
 			'image/jpeg' => 'JPEG',
 			'image/png'  => 'PNG',
 			'image/gif'  => 'GIF',
+			'image/webp' => 'WebP',
 		];
 	}
 }
