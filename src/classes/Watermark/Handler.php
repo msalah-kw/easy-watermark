@@ -438,7 +438,7 @@ class Handler {
 	 * Prints text preview
 	 *
 	 * @param  Watermark $watermark Watermark object.
-	 * @param  string    $format       Preview format (jpg|png).
+         * @param  string    $format       Preview format (jpg|png|webp).
 	 * @return void
 	 */
 	public function print_text_preview( $watermark, $format ) {
@@ -465,7 +465,7 @@ class Handler {
 	 * Prints watermark preview
 	 *
 	 * @param  Watermark $watermark Watermark object.
-	 * @param  string    $format    Preview format (jpg|png).
+         * @param  string    $format    Preview format (jpg|png|webp).
 	 * @param  string    $size      Preview image size.
 	 * @return void
 	 */

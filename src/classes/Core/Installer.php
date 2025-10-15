@@ -7,6 +7,7 @@
 
 namespace EasyWatermark\Core;
 
+use EasyWatermark\Helpers\Image as ImageHelper;
 use EasyWatermark\Watermark\Watermark;
 
 /**
@@ -130,10 +131,15 @@ class Installer {
 
 		flush_rewrite_rules();
 
-		if ( version_compare( $from, '1.0.0', '>=' ) ) {
-			self::update_attachment_meta();
-			return;
-		}
+                if ( version_compare( $from, '1.0.0', '>=' ) ) {
+
+                        if ( version_compare( $from, '1.0.12', '<' ) ) {
+                                self::migrate_webp_support();
+                        }
+
+                        self::update_attachment_meta();
+                        return;
+                }
 
 		if ( $from ) {
 			$plugin_slug = Plugin::get()->get_slug();
@@ -237,13 +243,13 @@ class Installer {
 
 	}
 
-	/**
-	 * Update attachment meta
-	 *
-	 * @return void
-	 */
-	private static function update_attachment_meta() {
-		global $wpdb;
+        /**
+         * Update attachment meta
+         *
+         * @return void
+         */
+        private static function update_attachment_meta() {
+                global $wpdb;
 
 		// phpcs:ignore WordPress.DB.DirectDatabaseQuery
 		$meta = $wpdb->get_results( $wpdb->prepare( "SELECT `post_id`, `meta_value` FROM {$wpdb->postmeta} WHERE `meta_key` = %s", '_ew_applied_watermarks' ) );
@@ -254,22 +260,92 @@ class Installer {
 			if ( is_array( $value ) ) {
 				$new_value = [];
 
-				foreach ( $value as $watermark_id ) {
-					$watermark = Watermark::get( $watermark_id );
+                                foreach ( $value as $watermark_id ) {
+                                        $watermark = Watermark::get( $watermark_id );
 
-					if ( $watermark ) {
-						$new_value[ $watermark_id ] = $watermark->post_title;
-					}
-				}
+                                        if ( $watermark ) {
+                                                $new_value[ $watermark_id ] = $watermark->post_title;
+                                        }
+                                }
 
-				if ( $new_value ) {
-					update_post_meta( $entry->post_id, '_ew_applied_watermarks', $new_value );
-				} else {
-					delete_post_meta( $entry->post_id, '_ew_applied_watermarks' );
-				}
-			}
-		}
-	}
+                                if ( $new_value ) {
+                                        update_post_meta( $entry->post_id, '_ew_applied_watermarks', $new_value );
+                                } else {
+                                        delete_post_meta( $entry->post_id, '_ew_applied_watermarks' );
+                                }
+                        }
+                }
+        }
+
+        /**
+         * Ensures stored watermarks can target WebP images when supported.
+         *
+         * @return void
+         */
+        private static function migrate_webp_support() {
+
+                if ( ! ImageHelper::supports_webp() ) {
+                        return;
+                }
+
+                $webp_type      = 'image/webp';
+                $available_mime = array_keys( ImageHelper::get_available_mime_types() );
+
+                $settings_option = Plugin::get()->get_slug() . '-settings';
+                $settings        = get_option( $settings_option );
+
+                if ( isset( $settings['general']['image_types'] ) && is_array( $settings['general']['image_types'] ) ) {
+                        if ( ! in_array( $webp_type, $settings['general']['image_types'], true ) ) {
+                                $settings['general']['image_types'][] = $webp_type;
+                                $settings['general']['image_types']   = array_values( array_intersect( $available_mime, $settings['general']['image_types'] ) );
+                                update_option( $settings_option, $settings );
+                        }
+                }
+
+                $watermarks = Watermark::get_all();
+
+                foreach ( $watermarks as $watermark ) {
+                        $params  = $watermark->get_params();
+                        $updated = false;
+
+                        if ( ! isset( $params['image_types'] ) || ! is_array( $params['image_types'] ) ) {
+                                $params['image_types'] = $available_mime;
+                                $updated               = true;
+                        } elseif ( ! in_array( $webp_type, $params['image_types'], true ) ) {
+                                $params['image_types'][] = $webp_type;
+                                $params['image_types']   = array_values( array_intersect( $available_mime, $params['image_types'] ) );
+                                $updated                 = true;
+                        }
+
+                        if ( $updated ) {
+                                wp_update_post(
+                                        [
+                                                'ID'           => $watermark->ID,
+                                                'post_content' => wp_json_encode( $params, JSON_UNESCAPED_UNICODE ),
+                                        ]
+                                );
+                        }
+
+                        $tmp_params = get_post_meta( $watermark->ID, '_ew_tmp_params', true );
+
+                        if ( is_array( $tmp_params ) ) {
+                                $tmp_updated = false;
+
+                                if ( ! isset( $tmp_params['image_types'] ) || ! is_array( $tmp_params['image_types'] ) ) {
+                                        $tmp_params['image_types'] = $available_mime;
+                                        $tmp_updated               = true;
+                                } elseif ( ! in_array( $webp_type, $tmp_params['image_types'], true ) ) {
+                                        $tmp_params['image_types'][] = $webp_type;
+                                        $tmp_params['image_types']   = array_values( array_intersect( $available_mime, $tmp_params['image_types'] ) );
+                                        $tmp_updated                 = true;
+                                }
+
+                                if ( $tmp_updated ) {
+                                        update_post_meta( $watermark->ID, '_ew_tmp_params', $tmp_params );
+                                }
+                        }
+                }
+        }
 
 	/**
 	 * Updates backup info

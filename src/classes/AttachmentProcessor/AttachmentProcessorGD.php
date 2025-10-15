@@ -7,6 +7,7 @@
 
 namespace EasyWatermark\AttachmentProcessor;
 
+use EasyWatermark\Helpers\Image as ImageHelper;
 use EasyWatermark\Helpers\Text;
 use EasyWatermark\Watermark\Watermark;
 use WP_Error;
@@ -82,6 +83,10 @@ class AttachmentProcessorGD extends AttachmentProcessor {
 
 		$gdinfo                    = gd_info();
 		$this->is_freetype_enabled = $gdinfo['FreeType Support'];
+
+                if ( ImageHelper::supports_webp() ) {
+                        $this->allowed_types[] = 'webp';
+                }
 
 		parent::__construct( $file, $params );
 
@@ -285,8 +290,8 @@ class AttachmentProcessorGD extends AttachmentProcessor {
 					return false;
 				}
 
-				if ( 'png' === $this->image_type && $this->is_alpha_png( $this->image_file ) ) {
-					// Preserve opacity for png images.
+				if ( $this->should_preserve_alpha( $this->image_type, $this->image_file ) ) {
+					// Preserve opacity for images with alpha channel support.
 					imagealphablending( $this->output_image, false );
 					imagesavealpha( $this->output_image, true );
 				}
@@ -334,7 +339,7 @@ class AttachmentProcessorGD extends AttachmentProcessor {
 			return false;
 		}
 
-		if ( 'png' === $type && $this->is_alpha_png( $file_path ) ) {
+		if ( $this->should_preserve_alpha( $type, $file_path ) ) {
 			imagealphablending( $image, false );
 			imagesavealpha( $image, true );
 		}
@@ -425,7 +430,7 @@ class AttachmentProcessorGD extends AttachmentProcessor {
 				return new WP_Error( 'gd_error', __( 'Could not create temporary image. Please check your server configuration.', 'easy-watermark' ) );
 			}
 
-			if ( 'png' === $watermark_type && $this->is_alpha_png( $watermark_file ) ) {
+			if ( $this->should_preserve_alpha( $watermark_type, $watermark_file ) ) {
 				imagealphablending( $tmp_image, false );
 				imagesavealpha( $tmp_image, true );
 			}
@@ -464,7 +469,7 @@ class AttachmentProcessorGD extends AttachmentProcessor {
 			$watermark_size['height'],
 		];
 
-		if ( 'png' === $watermark_type && $this->is_alpha_png( $watermark_file ) ) {
+		if ( $this->should_preserve_alpha( $watermark_type, $watermark_file ) ) {
 			// Watermark is PNG with alpha channel, use imagecopy.
 			$func_name = 'imagecopy';
 		} else {
@@ -650,6 +655,27 @@ class AttachmentProcessorGD extends AttachmentProcessor {
 		}
 
 		return $this->finfo;
+
+	}
+
+	/**
+	 * Determines if image alpha channel should be preserved for provided type
+	 *
+	 * @param  string $type      Image type.
+	 * @param  string $file_path Optional file path.
+	 * @return boolean
+	 */
+	private function should_preserve_alpha( $type, $file_path = null ) {
+
+		if ( 'png' === $type ) {
+			return $file_path ? $this->is_alpha_png( $file_path ) : true;
+		}
+
+		if ( 'webp' === $type ) {
+			return in_array( 'webp', $this->allowed_types, true );
+		}
+
+		return false;
 
 	}
 
