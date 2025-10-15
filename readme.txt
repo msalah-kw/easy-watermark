@@ -5,7 +5,7 @@ Tags: watermark, image, picture, photo, media, gallery, signature, transparent, 
 Requires at least: 4.6
 Requires PHP: 5.6
 Tested up to: 6.8
-Stable tag: 1.0.11
+Stable tag: 1.0.12
 License: GPLv3 or later
 License URI: https://www.gnu.org/licenses/gpl-3.0.html
 Text Domain: easy-watermark
@@ -24,9 +24,9 @@ Easy Watermark can automatically add watermark to images as they are uploaded to
 
 On one image you can have two watermarks! One of them can be text watermark and the other image watermark. You can control their position and size and apply them to your media independently.
 
-* Image watermark can be a JPG, PNG or GIF
-* Full support for transparency and alpha chanel in PNG and GIF files
-* JPG and GIF files and text can have opacity set (from 0 to 100%)
+* Image watermark can be a JPG, PNG, GIF or WebP (when the server supports it)
+* Full support for transparency and alpha chanel in PNG, GIF and WebP files
+* JPG, GIF and WebP files and text can have opacity set (from 0 to 100%)
 * Text watermark is created using ttf fonts
 * Text color, size and rotation can be set
 * All built-in image sizes can be watermarked (thumbnail, medium, large and fullsize) as well as all additional sizes registered by themes or plugins
@@ -34,7 +34,7 @@ On one image you can have two watermarks! One of them can be text watermark and 
 
 = Image watermark =
 
-Easy Watermark supports three most popular image formats for watermark: JPG, PNG and GIF. For JPG watermarks you can control the opacity as well.
+Easy Watermark supports the most popular image formats for watermark: JPG, PNG, GIF and WebP (if your server supports WebP). For JPG watermarks you can control the opacity as well.
 
 Watermark can be applied in on of the 9 positions on the image and you can controll the exact sizing of it.
 
