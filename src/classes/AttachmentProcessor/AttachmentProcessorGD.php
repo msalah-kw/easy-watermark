@@ -10,12 +10,15 @@ namespace EasyWatermark\AttachmentProcessor;
 use EasyWatermark\Helpers\Image as ImageHelper;
 use EasyWatermark\Helpers\Text;
 use EasyWatermark\Watermark\Watermark;
+use EasyWatermark\Traits\WebpAware;
 use WP_Error;
 
 /**
  * GD Image Processor
  */
 class AttachmentProcessorGD extends AttachmentProcessor {
+
+        use WebpAware;
 
 	/**
 	 * Finfo instance
@@ -84,9 +87,9 @@ class AttachmentProcessorGD extends AttachmentProcessor {
 		$gdinfo                    = gd_info();
 		$this->is_freetype_enabled = $gdinfo['FreeType Support'];
 
-		if ( ! empty( $gdinfo['WebP Support'] ) && function_exists( 'imagecreatefromwebp' ) && function_exists( 'imagewebp' ) ) {
-			$this->allowed_types[] = 'webp';
-		}
+                if ( $this->supports_webp() ) {
+                        $this->allowed_types[] = 'webp';
+                }
 
 		parent::__construct( $file, $params );
 

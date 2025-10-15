@@ -8,11 +8,14 @@
 namespace EasyWatermark\Watermark;
 
 use EasyWatermark\Helpers\Image as ImageHelper;
+use EasyWatermark\Traits\WebpAware;
 
 /**
  * Watermark class
  */
 class Watermark {
+
+        use WebpAware;
 
 	/**
 	 * Default params
@@ -46,12 +49,12 @@ class Watermark {
 				'unit'  => 'px',
 			],
 		],
-		'image_types'     => [
-			'image/jpeg',
-			'image/png',
-			'image/gif',
-			'image/webp',
-		],
+                'image_types'     => [
+                        'image/jpeg',
+                        'image/png',
+                        'image/gif',
+                        'image/webp',
+                ],
 		'image_sizes'     => [
 			'medium',
 			'medium_large',
@@ -166,7 +169,7 @@ class Watermark {
                 $defaults  = self::$defaults;
                 $webp_type = 'image/webp';
 
-                if ( ImageHelper::supports_webp() ) {
+                if ( static::is_webp_supported() ) {
                         if ( ! in_array( $webp_type, $defaults['image_types'], true ) ) {
                                 $defaults['image_types'][] = $webp_type;
                         }

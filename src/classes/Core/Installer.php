@@ -8,12 +8,15 @@
 namespace EasyWatermark\Core;
 
 use EasyWatermark\Helpers\Image as ImageHelper;
+use EasyWatermark\Traits\WebpAware;
 use EasyWatermark\Watermark\Watermark;
 
 /**
  * Helper class providing install, uninstall, update methods
  */
 class Installer {
+
+        use WebpAware;
 
 	/**
 	 * Watermarked attachments
@@ -284,7 +287,7 @@ class Installer {
          */
         private static function migrate_webp_support() {
 
-                if ( ! ImageHelper::supports_webp() ) {
+                if ( ! static::is_webp_supported() ) {
                         return;
                 }
 
