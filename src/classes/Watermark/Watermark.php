@@ -7,10 +7,15 @@
 
 namespace EasyWatermark\Watermark;
 
+use EasyWatermark\Helpers\Image as ImageHelper;
+use EasyWatermark\Traits\WebpAware;
+
 /**
  * Watermark class
  */
 class Watermark {
+
+        use WebpAware;
 
 	/**
 	 * Default params
@@ -44,11 +49,12 @@ class Watermark {
 				'unit'  => 'px',
 			],
 		],
-		'image_types'     => [
-			'image/jpeg',
-			'image/png',
-			'image/gif',
-		],
+                'image_types'     => [
+                        'image/jpeg',
+                        'image/png',
+                        'image/gif',
+                        'image/webp',
+                ],
 		'image_sizes'     => [
 			'medium',
 			'medium_large',
@@ -120,30 +126,59 @@ class Watermark {
 	 * @param  array $params Params array.
 	 * @return array
 	 */
-	public static function parse_params( $params ) {
+        public static function parse_params( $params ) {
 
-		foreach ( self::$defaults as $key => $value ) {
-			if ( ! array_key_exists( $key, $params ) ) {
-				if ( 'array' === gettype( self::$defaults[ $key ] ) ) {
-					$params[ $key ] = [];
-				} else {
-					$params[ $key ] = false;
-				}
-			}
-		}
+                $defaults = self::get_defaults();
 
-		return $params;
+                foreach ( $defaults as $key => $value ) {
+                        if ( ! array_key_exists( $key, $params ) ) {
+                                if ( 'array' === gettype( $defaults[ $key ] ) ) {
+                                        $params[ $key ] = [];
+                                } else {
+                                        $params[ $key ] = false;
+                                }
+                        }
+                }
 
-	}
+                if ( isset( $params['image_types'] ) ) {
+                        if ( ! is_array( $params['image_types'] ) ) {
+                                $params['image_types'] = (array) $params['image_types'];
+                        }
+
+                        $params['image_types'] = array_values( array_unique( array_filter( $params['image_types'] ) ) );
+
+                        $available_types       = array_keys( ImageHelper::get_available_mime_types() );
+                        $params['image_types'] = array_values( array_intersect( $params['image_types'], $available_types ) );
+
+                        if ( empty( $params['image_types'] ) ) {
+                                $params['image_types'] = $available_types;
+                        }
+                }
+
+                return $params;
+
+        }
 
 	/**
 	 * Returns defaults array
 	 *
 	 * @return array
 	 */
-	public static function get_defaults() {
-		return self::$defaults;
-	}
+        public static function get_defaults() {
+
+                $defaults  = self::$defaults;
+                $webp_type = 'image/webp';
+
+                if ( static::is_webp_supported() ) {
+                        if ( ! in_array( $webp_type, $defaults['image_types'], true ) ) {
+                                $defaults['image_types'][] = $webp_type;
+                        }
+                } else {
+                        $defaults['image_types'] = array_values( array_diff( $defaults['image_types'], [ $webp_type ] ) );
+                }
+
+                return $defaults;
+        }
 
 	/**
 	 * Original post object
@@ -176,8 +211,9 @@ class Watermark {
 
 		$this->post = $post;
 
-		$this->params = $post->post_content ? json_decode( $post->post_content, true ) : [];
-		$this->params = wp_parse_args( $this->params, self::$defaults );
+                $defaults     = self::get_defaults();
+                $this->params = $post->post_content ? json_decode( $post->post_content, true ) : [];
+                $this->params = wp_parse_args( $this->params, $defaults );
 
 	}
 

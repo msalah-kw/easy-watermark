@@ -35,7 +35,7 @@ class Preview {
 	 *
 	 * @param  string  $type         Preview type.
 	 * @param  integer $watermark_id Watermark id.
-	 * @param  string  $format       Preview format (jpg|png).
+         * @param  string  $format       Preview format (jpg|png|webp).
 	 * @param  string  $size         Image size.
 	 * @return void
 	 */
@@ -62,7 +62,7 @@ class Preview {
 	 * Prints text preview
 	 *
 	 * @param  Watermark $watermark Watermark object.
-	 * @param  string    $format    Preview format (jpg|png).
+         * @param  string    $format    Preview format (jpg|png|webp).
 	 * @return void
 	 */
 	public function print_text_preview( $watermark, $format ) {
@@ -73,7 +73,7 @@ class Preview {
 	 * Prints text preview
 	 *
 	 * @param  Watermark $watermark Watermark object.
-	 * @param  string    $format    Preview format (jpg|png).
+         * @param  string    $format    Preview format (jpg|png|webp).
 	 * @param  string    $size      Image size.
 	 * @return void|false
 	 */

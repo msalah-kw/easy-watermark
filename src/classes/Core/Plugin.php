@@ -149,7 +149,7 @@ class Plugin extends Singleton {
 	public function init() {
 
 		add_rewrite_tag( '%easy_watermark_preview%', '([^./-]+)' );
-		add_rewrite_tag( '%format%', '(jpg|png)' );
+                add_rewrite_tag( '%format%', '(jpg|png|webp)' );
 		add_rewrite_tag( '%watermark_id%', '([0-9]+)' );
 		add_rewrite_tag( '%image_size%', '([^./-]+)' );
 
