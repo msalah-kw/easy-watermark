@@ -152,8 +152,10 @@ class Assets {
 						'watermarkingSuccessMessage' => sprintf( __( 'Successfully watermarked %s images.', 'easy-watermark' ), '{procesed}' ),
 						/* translators: watermarked images number */
 						'restoringSuccessMessage'    => sprintf( __( 'Successfully restored %s images.', 'easy-watermark' ), '{procesed}' ),
-						/* translators: %1&s - image title, %2&s - error content */
-						'bulkActionErrorMessage'     => sprintf( __( 'An error occured while processing %1$s: %2$s', 'easy-watermark' ), '{imageTitle}', '{error}' ),
+                                                /* translators: %s: number of images that will receive the watermark */
+                                                'bulkWatermarkConfirmation'  => sprintf( __( 'Bulk watermark will be applied to %s images. Do you want to continue?', 'easy-watermark' ), '{count}' ),
+                                                /* translators: %1&s - image title, %2&s - error content */
+                                                'bulkActionErrorMessage'     => sprintf( __( 'An error occured while processing %1$s: %2$s', 'easy-watermark' ), '{imageTitle}', '{error}' ),
 					],
 				];
 				break;
