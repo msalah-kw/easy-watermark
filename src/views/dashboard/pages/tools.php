@@ -41,6 +41,19 @@
                                                         );
                                                         ?>
                                                 </p>
+                                                <?php if ( empty( $webp_supported ) && $webp_attachment_count > 0 ) : ?>
+                                                        <div class="notice notice-warning inline">
+                                                                <p>
+                                                                        <?php
+                                                                        printf(
+                                                                                /* translators: %s: number of WebP attachments that cannot be processed. */
+                                                                                esc_html__( '%s WebP images are excluded because the server does not support WebP processing via GD. Enable WebP support to watermark them.', 'easy-watermark' ),
+                                                                                number_format_i18n( $webp_attachment_count )
+                                                                        );
+                                                                        ?>
+                                                                </p>
+                                                        </div>
+                                                <?php endif; ?>
                                                 <p><a href="#" class="button-primary"><?php esc_html_e( 'Start', 'easy-watermark' ); ?></a><span class="spinner"></span></p>
                                                 <p class="description"><?php esc_html_e( 'Note: The same watermark will never get applied twice to the same image. This tool is safe to use even if some of the images are already watermarked.', 'easy-watermark' ); ?></p>
                                         <?php else : ?>

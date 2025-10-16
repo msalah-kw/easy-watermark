@@ -172,9 +172,66 @@ trait AttachmentPostTypeResolver {
                         }
                 }
 
+                $post_type = $this->detect_post_type_from_content( $attachment_id );
+
+                if ( $post_type ) {
+                        $detected[ $attachment_id ] = $post_type;
+                        return $post_type;
+                }
+
                 $detected[ $attachment_id ] = null;
 
                 return null;
+        }
+
+        /**
+         * Attempt to detect the attachment's usage by scanning post content.
+         *
+         * @param int $attachment_id Attachment ID.
+         * @return string|null
+         */
+        private function detect_post_type_from_content( $attachment_id ) {
+
+                global $wpdb;
+
+                $attachment_id = (int) $attachment_id;
+
+                if ( $attachment_id <= 0 ) {
+                        return null;
+                }
+
+                $patterns = [
+                        '"id":' . $attachment_id,
+                        '"attachmentId":' . $attachment_id,
+                        'wp-image-' . $attachment_id,
+                        'data-id="' . $attachment_id . '"',
+                        'data-attachment-id="' . $attachment_id . '"',
+                ];
+
+                $likes = array_values( array_unique( array_filter( array_map( static function ( $pattern ) use ( $wpdb ) {
+                        if ( '' === $pattern ) {
+                                return null;
+                        }
+
+                        return '%' . $wpdb->esc_like( $pattern ) . '%';
+                }, $patterns ) ) ) );
+
+                if ( empty( $likes ) ) {
+                        return null;
+                }
+
+                $placeholder = implode( ' OR ', array_fill( 0, count( $likes ), 'post_content LIKE %s' ) );
+
+                $sql = "SELECT DISTINCT ID FROM {$wpdb->posts} WHERE post_type NOT IN ('revision','attachment') AND post_status NOT IN ('trash','auto-draft') AND ( {$placeholder} ) LIMIT 50"; // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
+
+                // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.PreparedSQL.NotPrepared
+                $post_ids = $wpdb->get_col( $wpdb->prepare( $sql, ...$likes ) );
+
+                if ( empty( $post_ids ) ) {
+                        return null;
+                }
+
+                return $this->select_preferred_post_type_from_ids( $post_ids );
         }
 
         /**

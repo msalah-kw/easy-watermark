@@ -65,10 +65,22 @@ class Tools extends Page {
                 // phpcs:ignore WordPress.DB.DirectDatabaseQuery
                 $backup_count = (int) $wpdb->get_var( "SELECT COUNT( post_id ) FROM {$wpdb->postmeta} WHERE meta_key = '_ew_has_backup'" );
 
+                $webp_supported       = ImageHelper::supports_webp();
+                $webp_attachment_count = 0;
+
+                if ( ! $webp_supported ) {
+                        // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery
+                        $webp_attachment_count = (int) $wpdb->get_var(
+                                "SELECT COUNT(ID) FROM {$wpdb->posts} WHERE post_type = 'attachment' AND post_status <> 'trash' AND post_mime_type = 'image/webp'"
+                        );
+                }
+
                 return [
-                        'watermarks'   => $this->handler->get_watermarks(),
-                        'backup_count' => $backup_count,
-                        'attachments'  => $this->get_attachments(),
+                        'watermarks'             => $this->handler->get_watermarks(),
+                        'backup_count'           => $backup_count,
+                        'attachments'            => $this->get_attachments(),
+                        'webp_supported'         => $webp_supported,
+                        'webp_attachment_count'  => $webp_attachment_count,
                 ];
         }
 
