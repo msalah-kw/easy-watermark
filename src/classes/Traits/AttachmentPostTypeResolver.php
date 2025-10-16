@@ -13,6 +13,13 @@ namespace EasyWatermark\Traits;
 trait AttachmentPostTypeResolver {
 
         /**
+         * Cache of attachment post type lookups.
+         *
+         * @var array<int, string>
+         */
+        private static $attachment_post_type_cache = [];
+
+        /**
          * Resolve the most accurate post type for an attachment.
          *
          * @param \WP_Post|false $attachment Attachment object.
@@ -20,11 +27,17 @@ trait AttachmentPostTypeResolver {
          */
         protected function resolve_attachment_post_type( $attachment ) {
 
+                $attachment_id = ( $attachment instanceof \WP_Post ) ? (int) $attachment->ID : 0;
+
+                if ( $attachment_id && isset( self::$attachment_post_type_cache[ $attachment_id ] ) ) {
+                        return self::$attachment_post_type_cache[ $attachment_id ];
+                }
+
                 if ( $attachment instanceof \WP_Post && $attachment->post_parent > 0 ) {
                         $post_type = get_post_type( $attachment->post_parent );
 
                         if ( $post_type ) {
-                                return $post_type;
+                                return self::cache_attachment_post_type( $attachment_id, $post_type );
                         }
                 }
 
@@ -34,20 +47,25 @@ trait AttachmentPostTypeResolver {
                         $requested_post_type = get_post_type( $request_post_id );
 
                         if ( $requested_post_type ) {
-                                return $requested_post_type;
+                                return self::cache_attachment_post_type( $attachment_id, $requested_post_type );
                         }
                 }
 
                 if ( $attachment instanceof \WP_Post ) {
+                        $referenced_post_type = $this->detect_post_type_from_usage( $attachment->ID );
+
+                        if ( $referenced_post_type ) {
+                                return self::cache_attachment_post_type( $attachment_id, $referenced_post_type );
+                        }
+
                         $context = get_post_meta( $attachment->ID, '_wp_attachment_context', true );
 
                         if ( $context && post_type_exists( $context ) ) {
-                                return $context;
+                                return self::cache_attachment_post_type( $attachment_id, $context );
                         }
                 }
 
-                return 'unattached';
-
+                return self::cache_attachment_post_type( $attachment_id, 'unattached' );
         }
 
         /**
@@ -96,7 +114,67 @@ trait AttachmentPostTypeResolver {
                 }
 
                 return 0;
+        }
 
+        /**
+         * Detect post type by scanning known post meta references to an attachment.
+         *
+         * @param int $attachment_id Attachment ID.
+         * @return string|null
+         */
+        protected function detect_post_type_from_usage( $attachment_id ) {
+
+                static $detected = [];
+
+                if ( isset( $detected[ $attachment_id ] ) ) {
+                        return $detected[ $attachment_id ];
+                }
+
+                global $wpdb;
+
+                $attachment_id = (int) $attachment_id;
+
+                if ( $attachment_id <= 0 ) {
+                        $detected[ $attachment_id ] = null;
+                        return null;
+                }
+
+                // Look for a direct featured image relationship first.
+                $post_ids = $wpdb->get_col( // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery
+                        $wpdb->prepare(
+                                "SELECT DISTINCT post_id FROM {$wpdb->postmeta} WHERE meta_key = '_thumbnail_id' AND meta_value = %d",
+                                $attachment_id
+                        )
+                );
+
+                $post_type = $this->select_preferred_post_type_from_ids( $post_ids );
+
+                if ( $post_type ) {
+                        $detected[ $attachment_id ] = $post_type;
+                        return $post_type;
+                }
+
+                // WooCommerce stores gallery images as a comma-separated list.
+                if ( post_type_exists( 'product' ) ) {
+                        $regexp   = sprintf( '(^|,)%d(,|$)', $attachment_id );
+                        $post_ids = $wpdb->get_col( // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery
+                                $wpdb->prepare(
+                                        "SELECT DISTINCT post_id FROM {$wpdb->postmeta} WHERE meta_key = '_product_image_gallery' AND meta_value REGEXP %s",
+                                        $regexp
+                                )
+                        );
+
+                        $post_type = $this->select_preferred_post_type_from_ids( $post_ids );
+
+                        if ( $post_type ) {
+                                $detected[ $attachment_id ] = $post_type;
+                                return $post_type;
+                        }
+                }
+
+                $detected[ $attachment_id ] = null;
+
+                return null;
         }
 
         /**
@@ -134,6 +212,92 @@ trait AttachmentPostTypeResolver {
                 }
 
                 return 0;
+        }
 
+        /**
+         * Cache a resolved post type and return it.
+         *
+         * @param int    $attachment_id Attachment ID.
+         * @param string $post_type     Resolved post type.
+         * @return string
+         */
+        private static function cache_attachment_post_type( $attachment_id, $post_type ) {
+
+                if ( $attachment_id > 0 ) {
+                        self::$attachment_post_type_cache[ $attachment_id ] = $post_type;
+                }
+
+                return $post_type;
+        }
+
+        /**
+         * Determine the preferred post type from a list of post ids.
+         *
+         * @param array $post_ids List of post ids referencing the attachment.
+         * @return string|null
+         */
+        private function select_preferred_post_type_from_ids( $post_ids ) {
+
+                if ( empty( $post_ids ) || ! is_array( $post_ids ) ) {
+                        return null;
+                }
+
+                $fallback = null;
+
+                foreach ( $post_ids as $post_id ) {
+                        $post_type = $this->normalize_detected_post_type( (int) $post_id );
+
+                        if ( ! $post_type ) {
+                                continue;
+                        }
+
+                        if ( 'product' === $post_type ) {
+                                return 'product';
+                        }
+
+                        if ( null === $fallback ) {
+                                $fallback = $post_type;
+                        }
+                }
+
+                return $fallback;
+        }
+
+        /**
+         * Normalize detected post type to improve matching accuracy.
+         *
+         * @param int $post_id Post id referencing the attachment.
+         * @return string|null
+         */
+        private function normalize_detected_post_type( $post_id ) {
+
+                if ( $post_id <= 0 ) {
+                        return null;
+                }
+
+                $post_type = get_post_type( $post_id );
+
+                if ( ! $post_type ) {
+                        return null;
+                }
+
+                if ( 'product_variation' === $post_type ) {
+                        $parent_id = (int) get_post_field( 'post_parent', $post_id );
+
+                        if ( $parent_id > 0 ) {
+                                $parent_type = get_post_type( $parent_id );
+
+                                if ( $parent_type ) {
+                                        $post_type = $parent_type;
+                                }
+                        }
+
+                        if ( 'product_variation' === $post_type ) {
+                                $post_type = 'product';
+                        }
+                }
+
+                return $post_type;
         }
 }
+

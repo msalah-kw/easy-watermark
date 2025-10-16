@@ -85,6 +85,7 @@ class Tools extends Page {
                 $posts      = get_posts( [
                         'post_type'      => 'attachment',
                         'post_mime_type' => array_keys( $mime_types ),
+                        'post_status'    => 'any',
                         'numberposts'    => -1,
                 ] );
 
@@ -95,6 +96,11 @@ class Tools extends Page {
                 }
 
                 foreach ( $posts as $post ) {
+                        if ( 'trash' === $post->post_status ) {
+                                // Skip trashed attachments regardless of mode.
+                                continue;
+                        }
+
                         if ( get_post_meta( $post->ID, '_ew_used_as_watermark', true ) ) {
                                 // Skip images used as watermark.
                                 continue;
