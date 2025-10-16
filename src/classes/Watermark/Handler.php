@@ -390,6 +390,18 @@ class Handler {
 
         }
 
+        /**
+         * Prime attachment post type detection cache for a list of attachments.
+         *
+         * @param array $attachment_ids Attachment IDs to prime.
+         * @return void
+         */
+        public function prime_attachment_post_types( array $attachment_ids ) {
+
+                $this->prime_attachment_usage_cache( $attachment_ids );
+
+        }
+
 	/**
 	 * Performs attachment backup
 	 *

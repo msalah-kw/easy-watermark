@@ -20,6 +20,20 @@ trait AttachmentPostTypeResolver {
         private static $attachment_post_type_cache = [];
 
         /**
+         * Cache of attachment post types detected from featured image usage.
+         *
+         * @var array<int, string|null>
+         */
+        private static $attachment_featured_usage = [];
+
+        /**
+         * Cache of attachment post types detected from gallery usage.
+         *
+         * @var array<int, string|null>
+         */
+        private static $attachment_gallery_usage = [];
+
+        /**
          * Resolve the most accurate post type for an attachment.
          *
          * @param \WP_Post|false $attachment Attachment object.
@@ -139,37 +153,13 @@ trait AttachmentPostTypeResolver {
                         return null;
                 }
 
-                // Look for a direct featured image relationship first.
-                $post_ids = $wpdb->get_col( // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery
-                        $wpdb->prepare(
-                                "SELECT DISTINCT post_id FROM {$wpdb->postmeta} WHERE meta_key = '_thumbnail_id' AND meta_value = %d",
-                                $attachment_id
-                        )
-                );
+                $this->prime_attachment_usage_cache( [ $attachment_id ] );
 
-                $post_type = $this->select_preferred_post_type_from_ids( $post_ids );
+                $post_type = $this->get_cached_usage_post_type( $attachment_id );
 
                 if ( $post_type ) {
                         $detected[ $attachment_id ] = $post_type;
                         return $post_type;
-                }
-
-                // WooCommerce stores gallery images as a comma-separated list.
-                if ( post_type_exists( 'product' ) ) {
-                        $regexp   = sprintf( '(^|,)%d(,|$)', $attachment_id );
-                        $post_ids = $wpdb->get_col( // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery
-                                $wpdb->prepare(
-                                        "SELECT DISTINCT post_id FROM {$wpdb->postmeta} WHERE meta_key = '_product_image_gallery' AND meta_value REGEXP %s",
-                                        $regexp
-                                )
-                        );
-
-                        $post_type = $this->select_preferred_post_type_from_ids( $post_ids );
-
-                        if ( $post_type ) {
-                                $detected[ $attachment_id ] = $post_type;
-                                return $post_type;
-                        }
                 }
 
                 $post_type = $this->detect_post_type_from_content( $attachment_id );
@@ -355,6 +345,190 @@ trait AttachmentPostTypeResolver {
                 }
 
                 return $post_type;
+        }
+
+        /**
+         * Prime caches with usage information for a set of attachments.
+         *
+         * @param array $attachment_ids Attachment IDs to prime.
+         * @return void
+         */
+        protected function prime_attachment_usage_cache( array $attachment_ids ) {
+
+                $attachment_ids = array_values( array_unique( array_filter( array_map( 'absint', $attachment_ids ) ) ) );
+
+                if ( empty( $attachment_ids ) ) {
+                        return;
+                }
+
+                $this->prime_featured_image_usage_cache( $attachment_ids );
+
+                if ( post_type_exists( 'product' ) ) {
+                        $this->prime_product_gallery_usage_cache( $attachment_ids );
+                }
+
+        }
+
+        /**
+         * Prime featured image usage cache for attachments.
+         *
+         * @param array $attachment_ids Attachment IDs to prime.
+         * @return void
+         */
+        private function prime_featured_image_usage_cache( array $attachment_ids ) {
+
+                $missing = array_values( array_filter( $attachment_ids, static function ( $attachment_id ) {
+                        return ! array_key_exists( $attachment_id, self::$attachment_featured_usage );
+                } ) );
+
+                if ( empty( $missing ) ) {
+                        return;
+                }
+
+                global $wpdb;
+
+                $placeholders = implode( ',', array_fill( 0, count( $missing ), '%d' ) );
+
+                // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared, WordPress.DB.DirectDatabaseQuery.DirectQuery
+                $rows = $wpdb->get_results(
+                        $wpdb->prepare(
+                                "SELECT post_id, meta_value FROM {$wpdb->postmeta} WHERE meta_key = '_thumbnail_id' AND meta_value IN ({$placeholders})",
+                                ...$missing
+                        ),
+                        ARRAY_A
+                );
+
+                foreach ( $missing as $attachment_id ) {
+                        if ( ! array_key_exists( $attachment_id, self::$attachment_featured_usage ) ) {
+                                self::$attachment_featured_usage[ $attachment_id ] = null;
+                        }
+                }
+
+                foreach ( $rows as $row ) {
+                        $attachment_id = (int) $row['meta_value'];
+                        $post_type     = $this->normalize_detected_post_type( (int) $row['post_id'] );
+
+                        if ( ! $post_type ) {
+                                continue;
+                        }
+
+                        if ( 'product' === $post_type ) {
+                                self::$attachment_featured_usage[ $attachment_id ] = 'product';
+                                continue;
+                        }
+
+                        if ( null === self::$attachment_featured_usage[ $attachment_id ] ) {
+                                self::$attachment_featured_usage[ $attachment_id ] = $post_type;
+                        }
+                }
+
+        }
+
+        /**
+         * Prime WooCommerce product gallery usage cache for attachments.
+         *
+         * @param array $attachment_ids Attachment IDs to prime.
+         * @return void
+         */
+        private function prime_product_gallery_usage_cache( array $attachment_ids ) {
+
+                $missing = array_values( array_filter( $attachment_ids, static function ( $attachment_id ) {
+                        return ! array_key_exists( $attachment_id, self::$attachment_gallery_usage );
+                } ) );
+
+                if ( empty( $missing ) ) {
+                        return;
+                }
+
+                global $wpdb;
+
+                foreach ( array_chunk( $missing, 100 ) as $chunk ) {
+                        foreach ( $chunk as $attachment_id ) {
+                                if ( ! array_key_exists( $attachment_id, self::$attachment_gallery_usage ) ) {
+                                        self::$attachment_gallery_usage[ $attachment_id ] = null;
+                                }
+                        }
+
+                        $pattern_parts = array_map( static function ( $id ) {
+                                return preg_quote( (string) $id, '/' );
+                        }, $chunk );
+
+                        $regexp = '(^|,)(' . implode( '|', $pattern_parts ) . ')(,|$)';
+
+                        // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery
+                        $rows = $wpdb->get_results(
+                                $wpdb->prepare(
+                                        "SELECT post_id, meta_value FROM {$wpdb->postmeta} WHERE meta_key = '_product_image_gallery' AND meta_value <> '' AND meta_value REGEXP %s",
+                                        $regexp
+                                ),
+                                ARRAY_A
+                        );
+
+                        if ( empty( $rows ) ) {
+                                continue;
+                        }
+
+                        foreach ( $rows as $row ) {
+                                $post_type = $this->normalize_detected_post_type( (int) $row['post_id'] );
+
+                                if ( ! $post_type ) {
+                                        continue;
+                                }
+
+                                $ids = array_filter( array_map( 'absint', explode( ',', (string) $row['meta_value'] ) ) );
+
+                                foreach ( $ids as $id ) {
+                                        if ( ! in_array( $id, $chunk, true ) ) {
+                                                continue;
+                                        }
+
+                                        if ( 'product' === $post_type ) {
+                                                self::$attachment_gallery_usage[ $id ] = 'product';
+                                        } elseif ( null === self::$attachment_gallery_usage[ $id ] ) {
+                                                self::$attachment_gallery_usage[ $id ] = $post_type;
+                                        }
+                                }
+                        }
+                }
+
+        }
+
+        /**
+         * Retrieve a cached post type inferred from attachment usage.
+         *
+         * @param int $attachment_id Attachment ID.
+         * @return string|null
+         */
+        private function get_cached_usage_post_type( $attachment_id ) {
+
+                $fallback = null;
+
+                if ( array_key_exists( $attachment_id, self::$attachment_featured_usage ) ) {
+                        $candidate = self::$attachment_featured_usage[ $attachment_id ];
+
+                        if ( 'product' === $candidate ) {
+                                return 'product';
+                        }
+
+                        if ( $candidate ) {
+                                $fallback = $candidate;
+                        }
+                }
+
+                if ( array_key_exists( $attachment_id, self::$attachment_gallery_usage ) ) {
+                        $candidate = self::$attachment_gallery_usage[ $attachment_id ];
+
+                        if ( 'product' === $candidate ) {
+                                return 'product';
+                        }
+
+                        if ( ! $fallback && $candidate ) {
+                                $fallback = $candidate;
+                        }
+                }
+
+                return $fallback;
+
         }
 }
 

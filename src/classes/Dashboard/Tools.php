@@ -94,11 +94,15 @@ class Tools extends Page {
 
                 $mime_types = ImageHelper::get_available_mime_types();
                 $result     = [];
-                $posts      = get_posts( [
-                        'post_type'      => 'attachment',
-                        'post_mime_type' => array_keys( $mime_types ),
-                        'post_status'    => 'any',
-                        'numberposts'    => -1,
+                $attachment_ids = get_posts( [
+                        'post_type'              => 'attachment',
+                        'post_mime_type'         => array_keys( $mime_types ),
+                        'post_status'            => 'any',
+                        'numberposts'            => -1,
+                        'fields'                 => 'ids',
+                        'no_found_rows'          => true,
+                        'update_post_meta_cache' => false,
+                        'update_post_term_cache' => false,
                 ] );
 
                 $watermarks = [];
@@ -107,24 +111,34 @@ class Tools extends Page {
                         $watermarks = $this->handler->get_watermarks();
                 }
 
-                foreach ( $posts as $post ) {
-                        if ( 'trash' === $post->post_status ) {
+                if ( ! empty( $attachment_ids ) ) {
+                        $this->handler->prime_attachment_post_types( $attachment_ids );
+                }
+
+                foreach ( $attachment_ids as $attachment_id ) {
+                        $attachment = get_post( $attachment_id );
+
+                        if ( ! $attachment instanceof \WP_Post ) {
+                                continue;
+                        }
+
+                        if ( 'trash' === $attachment->post_status ) {
                                 // Skip trashed attachments regardless of mode.
                                 continue;
                         }
 
-                        if ( get_post_meta( $post->ID, '_ew_used_as_watermark', true ) ) {
+                        if ( get_post_meta( $attachment_id, '_ew_used_as_watermark', true ) ) {
                                 // Skip images used as watermark.
                                 continue;
                         }
 
-                        if ( 'restore' === $mode && ! get_post_meta( $post->ID, '_ew_has_backup', true ) ) {
+                        if ( 'restore' === $mode && ! get_post_meta( $attachment_id, '_ew_has_backup', true ) ) {
                                 // In 'restore' mode skip items without backup.
                                 continue;
                         }
 
                         if ( 'watermark' === $mode ) {
-                                $applicable = $this->handler->get_watermarks_for_attachment( $post->ID, $watermarks );
+                                $applicable = $this->handler->get_watermarks_for_attachment( $attachment_id, $watermarks );
 
                                 if ( empty( $applicable ) ) {
                                         continue;
@@ -132,12 +146,12 @@ class Tools extends Page {
                         }
 
                         $result[] = [
-                                'id'    => $post->ID,
-                                'title' => $post->post_title,
+                                'id'    => $attachment_id,
+                                'title' => $attachment->post_title,
                         ];
-		}
+                }
 
-		return $result;
+                return $result;
 
 	}
 
