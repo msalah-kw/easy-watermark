@@ -56,6 +56,20 @@ class AttachmentProcessorGD extends AttachmentProcessor {
 	private $output_image;
 
 	/**
+	 * Stores the last error encountered while loading the input image.
+	 *
+	 * @var WP_Error|null
+	 */
+	private $input_image_error;
+
+	/**
+	 * Stores the last error encountered while preparing the output image.
+	 *
+	 * @var WP_Error|null
+	 */
+	private $output_image_error;
+
+	/**
 	 * Input image type
 	 *
 	 * @var string
@@ -138,8 +152,22 @@ class AttachmentProcessorGD extends AttachmentProcessor {
 
 		$output_image = $this->get_output_image();
 
-		if ( ! $output_image ) {
-			return false;
+		if ( is_wp_error( $output_image ) || ! $output_image ) {
+			$error = is_wp_error( $output_image )
+				? $output_image
+				: new WP_Error( 'gd_error', __( 'Could not create output image. Please check your server configuration.', 'easy-watermark' ) );
+
+			if ( empty( $this->watermarks ) ) {
+				return [];
+			}
+
+			$results = [];
+
+			foreach ( $this->watermarks as $watermark ) {
+				$results[ $watermark->ID ] = $error;
+			}
+
+			return $results;
 		}
 
 		$result = [];
@@ -255,16 +283,28 @@ class AttachmentProcessorGD extends AttachmentProcessor {
 	 */
 	public function get_input_image() {
 
-		if ( ! $this->input_image ) {
-			$type = $this->get_param( 'image_type' );
+		if ( $this->input_image_error instanceof WP_Error ) {
+			return $this->input_image_error;
+		}
 
+		if ( ! $this->input_image ) {
+			$type   = $this->get_param( 'image_type' );
 			$result = $this->create_image( $this->image_file, $type );
 
+			if ( is_wp_error( $result ) ) {
+				$this->input_image_error = $result;
+
+				return $this->input_image_error;
+			}
+
 			if ( ! $result ) {
-				return false;
+				$this->input_image_error = new WP_Error( 'gd_error', __( 'Could not open the source image. Please check your server configuration.', 'easy-watermark' ) );
+
+				return $this->input_image_error;
 			}
 
 			list( $this->input_image, $this->image_type ) = $result;
+			$this->input_image_error = null;
 		}
 
 		return $this->input_image;
@@ -278,42 +318,59 @@ class AttachmentProcessorGD extends AttachmentProcessor {
 	 */
 	public function get_output_image() {
 
+		if ( $this->output_image_error instanceof WP_Error ) {
+			return $this->output_image_error;
+		}
+
 		if ( ! $this->output_image ) {
 			$input_image = $this->get_input_image();
 
-			if ( ! $input_image ) {
-				$this->output_image = false;
-			} else {
-				$image_size = $this->get_input_image_size();
+			if ( is_wp_error( $input_image ) ) {
+				$this->output_image_error = $input_image;
 
-				// Create blank image.
-				$this->output_image = imagecreatetruecolor( $image_size['width'], $image_size['height'] );
-
-				if ( ! $this->output_image ) {
-					return false;
-				}
-
-				if ( $this->should_preserve_alpha( $this->image_type, $this->image_file ) ) {
-					// Preserve opacity for images with alpha channel support.
-					imagealphablending( $this->output_image, false );
-					imagesavealpha( $this->output_image, true );
-				}
-
-				imagecopy(
-					$this->output_image,
-					$this->input_image,
-					0, 0, 0, 0,
-					$image_size['width'],
-					$image_size['height']
-				);
-
-				// Destroy Input Image to save memory.
-				imagedestroy( $this->input_image );
-				unset( $this->input_image );
-
-				imagealphablending( $this->output_image, true );
+				return $this->output_image_error;
 			}
+
+			if ( ! $input_image ) {
+				$this->output_image        = false;
+				$this->output_image_error = new WP_Error( 'gd_error', __( 'Could not create output image. Please check your server configuration.', 'easy-watermark' ) );
+
+				return $this->output_image_error;
+			}
+
+			$image_size = $this->get_input_image_size();
+
+			// Create blank image.
+			$this->output_image = imagecreatetruecolor( $image_size['width'], $image_size['height'] );
+
+			if ( ! $this->output_image ) {
+				$this->output_image_error = new WP_Error( 'gd_error', __( 'Could not create output image. Please check your server configuration.', 'easy-watermark' ) );
+
+				return $this->output_image_error;
+			}
+
+			if ( $this->should_preserve_alpha( $this->image_type, $this->image_file ) ) {
+				// Preserve opacity for images with alpha channel support.
+				imagealphablending( $this->output_image, false );
+				imagesavealpha( $this->output_image, true );
+			}
+
+			imagecopy(
+				$this->output_image,
+				$this->input_image,
+				0, 0, 0, 0,
+				$image_size['width'],
+				$image_size['height']
+			);
+
+			// Destroy Input Image to save memory.
+			imagedestroy( $this->input_image );
+			unset( $this->input_image );
+
+			imagealphablending( $this->output_image, true );
 		}
+
+		$this->output_image_error = null;
 
 		return $this->output_image;
 
@@ -330,16 +387,34 @@ class AttachmentProcessorGD extends AttachmentProcessor {
 
 		$type = $this->detect_image_type( $type, $file_path );
 
+		if ( ! $type ) {
+			return new WP_Error( 'unsupported_image_type', __( 'Unable to determine the image type.', 'easy-watermark' ) );
+		}
+
 		if ( ! in_array( $type, $this->allowed_types, true ) ) {
-			return false;
+			if ( 'webp' === $type ) {
+				return new WP_Error( 'webp_not_supported', __( 'WebP images cannot be processed because the GD library on this server lacks WebP support. Enable WebP support or convert the files to a supported format.', 'easy-watermark' ) );
+			}
+
+			return new WP_Error(
+				'unsupported_image_type',
+				sprintf(
+					__( 'Image type "%s" is not supported by the GD library.', 'easy-watermark' ),
+					sanitize_text_field( $type )
+				)
+			);
 		}
 
 		$func_name = 'imagecreatefrom' . $type;
 
+		if ( ! function_exists( $func_name ) ) {
+			return new WP_Error( 'gd_error', __( 'Required GD function is missing for this image type.', 'easy-watermark' ) );
+		}
+
 		$image = call_user_func( $func_name, $file_path );
 
 		if ( false === $image ) {
-			return false;
+			return new WP_Error( 'gd_error', __( 'Something went wrong while opening the image.', 'easy-watermark' ) );
 		}
 
 		if ( $this->should_preserve_alpha( $type, $file_path ) ) {
@@ -377,6 +452,10 @@ class AttachmentProcessorGD extends AttachmentProcessor {
 	private function apply_image_watermark( $watermark ) {
 
 		$output_image = $this->get_output_image();
+
+		if ( is_wp_error( $output_image ) ) {
+			return $output_image;
+		}
 
 		if ( ! $output_image ) {
 			return new WP_Error( 'gd_error', __( 'Could not create output image. Please check your server configuration.', 'easy-watermark' ) );
@@ -501,6 +580,10 @@ class AttachmentProcessorGD extends AttachmentProcessor {
 	private function apply_text_watermark( $watermark ) {
 
 		$output_image = $this->get_output_image();
+
+		if ( is_wp_error( $output_image ) ) {
+			return $output_image;
+		}
 
 		if ( ! $output_image ) {
 			return new WP_Error( 'gd_error', __( 'Could not create output image. Please check your server configuration.', 'easy-watermark' ) );
@@ -763,8 +846,10 @@ class AttachmentProcessorGD extends AttachmentProcessor {
 			$this->output_image = null;
 		}
 
-		$this->image_size  = null;
-		$this->input_image = null;
+		$this->image_size          = null;
+		$this->input_image        = null;
+		$this->input_image_error  = null;
+		$this->output_image_error = null;
 
 	}
 

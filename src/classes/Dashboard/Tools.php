@@ -10,18 +10,28 @@ namespace EasyWatermark\Dashboard;
 use EasyWatermark\Core\Plugin;
 use EasyWatermark\Core\View;
 use EasyWatermark\Helpers\Image as ImageHelper;
+use EasyWatermark\Watermark\Handler;
 
 /**
  * Settings class
  */
 class Tools extends Page {
 
-	/**
-	 * Constructor
-	 */
-	public function __construct() {
-		parent::__construct( __( 'Tools', 'easy-watermark' ), 'tools', 20 );
-	}
+        /**
+         * Watermark handler instance.
+         *
+         * @var Handler
+         */
+        private $handler;
+
+        /**
+         * Constructor
+         */
+        public function __construct() {
+                parent::__construct( __( 'Tools', 'easy-watermark' ), 'tools', 20 );
+
+                $this->handler = Plugin::get()->get_watermark_handler();
+        }
 
 	/**
 	 * Display admin notices
@@ -52,17 +62,27 @@ class Tools extends Page {
 
 		global $wpdb;
 
-		$handler = Plugin::get()->get_watermark_handler();
+                // phpcs:ignore WordPress.DB.DirectDatabaseQuery
+                $backup_count = (int) $wpdb->get_var( "SELECT COUNT( post_id ) FROM {$wpdb->postmeta} WHERE meta_key = '_ew_has_backup'" );
 
-		// phpcs:ignore WordPress.DB.DirectDatabaseQuery
-		$backup_count = (int) $wpdb->get_var( "SELECT COUNT( post_id ) FROM {$wpdb->postmeta} WHERE meta_key = '_ew_has_backup'" );
+                $webp_supported       = ImageHelper::supports_webp();
+                $webp_attachment_count = 0;
 
-		return [
-			'watermarks'   => $handler->get_watermarks(),
-			'backup_count' => $backup_count,
-			'attachments'  => $this->get_attachments(),
-		];
-	}
+                if ( ! $webp_supported ) {
+                        // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery
+                        $webp_attachment_count = (int) $wpdb->get_var(
+                                "SELECT COUNT(ID) FROM {$wpdb->posts} WHERE post_type = 'attachment' AND post_status <> 'trash' AND post_mime_type = 'image/webp'"
+                        );
+                }
+
+                return [
+                        'watermarks'             => $this->handler->get_watermarks(),
+                        'backup_count'           => $backup_count,
+                        'attachments'            => $this->get_attachments(),
+                        'webp_supported'         => $webp_supported,
+                        'webp_attachment_count'  => $webp_attachment_count,
+                ];
+        }
 
 	/**
 	 * Gets attachments available for watermarking
@@ -72,32 +92,66 @@ class Tools extends Page {
 	 */
 	private function get_attachments( $mode = 'watermark' ) {
 
-		$mime_types = ImageHelper::get_available_mime_types();
-		$result     = [];
-		$posts      = get_posts( [
-			'post_type'      => 'attachment',
-			'post_mime_type' => array_keys( $mime_types ),
-			'numberposts'    => -1,
-		] );
+                $mime_types = ImageHelper::get_available_mime_types();
+                $result     = [];
+                $attachment_ids = get_posts( [
+                        'post_type'              => 'attachment',
+                        'post_mime_type'         => array_keys( $mime_types ),
+                        'post_status'            => 'any',
+                        'numberposts'            => -1,
+                        'fields'                 => 'ids',
+                        'no_found_rows'          => true,
+                        'update_post_meta_cache' => false,
+                        'update_post_term_cache' => false,
+                ] );
 
-		foreach ( $posts as $post ) {
-			if ( get_post_meta( $post->ID, '_ew_used_as_watermark', true ) ) {
-				// Skip images used as watermark.
-				continue;
-			}
+                $watermarks = [];
 
-			if ( 'restore' === $mode && ! get_post_meta( $post->ID, '_ew_has_backup', true ) ) {
-				// In 'restore' mode skip items without backup.
-				continue;
-			}
+                if ( 'watermark' === $mode ) {
+                        $watermarks = $this->handler->get_watermarks();
+                }
 
-			$result[] = [
-				'id'    => $post->ID,
-				'title' => $post->post_title,
-			];
-		}
+                if ( ! empty( $attachment_ids ) ) {
+                        $this->handler->prime_attachment_post_types( $attachment_ids );
+                }
 
-		return $result;
+                foreach ( $attachment_ids as $attachment_id ) {
+                        $attachment = get_post( $attachment_id );
+
+                        if ( ! $attachment instanceof \WP_Post ) {
+                                continue;
+                        }
+
+                        if ( 'trash' === $attachment->post_status ) {
+                                // Skip trashed attachments regardless of mode.
+                                continue;
+                        }
+
+                        if ( get_post_meta( $attachment_id, '_ew_used_as_watermark', true ) ) {
+                                // Skip images used as watermark.
+                                continue;
+                        }
+
+                        if ( 'restore' === $mode && ! get_post_meta( $attachment_id, '_ew_has_backup', true ) ) {
+                                // In 'restore' mode skip items without backup.
+                                continue;
+                        }
+
+                        if ( 'watermark' === $mode ) {
+                                $applicable = $this->handler->get_watermarks_for_attachment( $attachment_id, $watermarks );
+
+                                if ( empty( $applicable ) ) {
+                                        continue;
+                                }
+                        }
+
+                        $result[] = [
+                                'id'    => $attachment_id,
+                                'title' => $attachment->post_title,
+                        ];
+                }
+
+                return $result;
 
 	}
 

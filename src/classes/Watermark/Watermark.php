@@ -155,6 +155,30 @@ class Watermark {
                         }
                 }
 
+                if ( isset( $params['post_types'] ) ) {
+                        if ( ! is_array( $params['post_types'] ) ) {
+                                $params['post_types'] = (array) $params['post_types'];
+                        }
+
+                        $params['post_types'] = array_values( array_filter( array_unique( array_map( static function ( $post_type ) {
+                                $post_type = sanitize_key( $post_type );
+
+                                if ( '' === $post_type ) {
+                                        return null;
+                                }
+
+                                if ( 'unattached' === $post_type ) {
+                                        return $post_type;
+                                }
+
+                                return post_type_exists( $post_type ) ? $post_type : null;
+                        }, $params['post_types'] ) ) ) );
+
+                        if ( empty( $params['post_types'] ) ) {
+                                $params['post_types'] = [];
+                        }
+                }
+
                 return $params;
 
         }

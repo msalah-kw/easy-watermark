@@ -15,12 +15,15 @@ use EasyWatermark\Settings\Settings;
 use EasyWatermark\Helpers\Image as ImageHelper;
 use EasyWatermark\Metaboxes\Attachment\Watermarks;
 use EasyWatermark\Placeholders\Resolver;
+use EasyWatermark\Traits\AttachmentPostTypeResolver;
 use WP_Error;
 
 /**
  * Handler class
  */
 class Handler {
+
+        use AttachmentPostTypeResolver;
 
 	/**
 	 * If set to true, watermarks will not be applied.
@@ -158,21 +161,27 @@ class Handler {
 	 * @param  integer $watermark_id  Watermark id.
 	 * @return boolean|WP_Error
 	 */
-	public function apply_single_watermark( $attachment_id, $watermark_id ) {
+        public function apply_single_watermark( $attachment_id, $watermark_id ) {
 
-		if ( true === $this->lock ) {
-			return true;
-		}
+                if ( true === $this->lock ) {
+                        return true;
+                }
 
-		$watermark = Watermark::get( $watermark_id );
+                $watermark = Watermark::get( $watermark_id );
 
-		if ( 'publish' !== $watermark->post_status ) {
-			return false;
-		}
+                if ( 'publish' !== $watermark->post_status ) {
+                        return false;
+                }
 
-		return $this->apply_watermarks( $attachment_id, [ $watermark ] );
+                $watermarks = $this->get_watermarks_for_attachment( $attachment_id, [ $watermark ] );
 
-	}
+                if ( empty( $watermarks ) ) {
+                        return true;
+                }
+
+                return $this->apply_watermarks( $attachment_id, $watermarks );
+
+        }
 
 	/**
 	 * Applies single watermark
@@ -180,17 +189,21 @@ class Handler {
 	 * @param  integer $attachment_id Attachment id.
 	 * @return boolean|WP_Error
 	 */
-	public function apply_all_watermarks( $attachment_id ) {
+        public function apply_all_watermarks( $attachment_id ) {
 
-		if ( true === $this->lock ) {
-			return true;
-		}
+                if ( true === $this->lock ) {
+                        return true;
+                }
 
-		$watermarks = $this->get_watermarks();
+                $watermarks = $this->get_watermarks_for_attachment( $attachment_id );
 
-		return $this->apply_watermarks( $attachment_id, $watermarks );
+                if ( empty( $watermarks ) ) {
+                        return true;
+                }
 
-	}
+                return $this->apply_watermarks( $attachment_id, $watermarks );
+
+        }
 
 	/**
 	 * Applies single watermark
@@ -200,11 +213,11 @@ class Handler {
 	 * @param  array   $meta          Attachment metadata.
 	 * @return bool|WP_Error
 	 */
-	public function apply_watermarks( $attachment_id, $watermarks, $meta = [] ) {
+        public function apply_watermarks( $attachment_id, $watermarks, $meta = [] ) {
 
-		if ( true === $this->lock ) {
-			return false;
-		}
+                if ( true === $this->lock ) {
+                        return false;
+                }
 
 		if ( empty( $watermarks ) ) {
 			return false;
@@ -326,11 +339,68 @@ class Handler {
 			return true;
 		}
 
-		$this->restore_backup( $attachment_id, $meta );
+                $this->restore_backup( $attachment_id, $meta );
 
-		return $error;
+                return $error;
 
-	}
+        }
+
+        /**
+         * Get the watermarks applicable to a particular attachment.
+         *
+         * @param int   $attachment_id Attachment ID.
+         * @param array $watermarks    Optional list of candidate watermarks.
+         * @return array
+         */
+        public function get_watermarks_for_attachment( $attachment_id, $watermarks = null ) {
+
+                if ( null === $watermarks ) {
+                        $watermarks = $this->get_watermarks();
+                }
+
+                if ( empty( $watermarks ) ) {
+                        return [];
+                }
+
+                $mime_type = get_post_mime_type( $attachment_id );
+
+                if ( ! $mime_type ) {
+                        return [];
+                }
+
+                $attachment = get_post( $attachment_id );
+
+                if ( ! $attachment instanceof \WP_Post ) {
+                        return [];
+                }
+
+                $post_type = $this->resolve_attachment_post_type( $attachment );
+
+                return array_values( array_filter( $watermarks, static function ( $watermark ) use ( $mime_type, $post_type ) {
+                        if ( ! in_array( $mime_type, $watermark->image_types, true ) ) {
+                                return false;
+                        }
+
+                        if ( ! in_array( $post_type, $watermark->post_types, true ) ) {
+                                return false;
+                        }
+
+                        return true;
+                } ) );
+
+        }
+
+        /**
+         * Prime attachment post type detection cache for a list of attachments.
+         *
+         * @param array $attachment_ids Attachment IDs to prime.
+         * @return void
+         */
+        public function prime_attachment_post_types( array $attachment_ids ) {
+
+                $this->prime_attachment_usage_cache( $attachment_ids );
+
+        }
 
 	/**
 	 * Performs attachment backup
