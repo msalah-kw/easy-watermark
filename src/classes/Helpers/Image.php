@@ -46,20 +46,22 @@ class Image {
 		return $sizes;
 	}
 
-	/**
-	 * Returns available mime types
-	 *
-	 * @return array
-	 */
-        public static function get_available_mime_types() {
+        /**
+         * Returns available mime types
+         *
+         * @param bool $include_unsupported Whether to include formats missing server support.
+         * @return array
+         */
+        public static function get_available_mime_types( $include_unsupported = false ) {
                 $types = [
                         'image/jpeg' => 'JPEG',
                         'image/png'  => 'PNG',
                         'image/gif'  => 'GIF',
+                        'image/webp' => 'WebP',
                 ];
 
-                if ( self::supports_webp() ) {
-                        $types['image/webp'] = 'WebP';
+                if ( ! $include_unsupported && ! self::supports_webp() ) {
+                        unset( $types['image/webp'] );
                 }
 
                 return $types;
